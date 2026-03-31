@@ -14,26 +14,25 @@ from __future__ import annotations
 
 import asyncio
 import math
-import struct
 import time
 from typing import AsyncIterator
 
 import serial
 
-from config import AppConfig, SensorConfig, load_config
+from config import SensorConfig, load_config
 from utils import STREAM_PATH, is_demo_mode, run_in_executor, setup_logging, write_stream_file_atomic
 
 logger = setup_logging("sensor")
 
-# HLK-LD2450 binary frame layout
+# HLK-LD2450 binary frame constants
 FRAME_HEADER = bytes([0xAA, 0xFF, 0x03, 0x00])
 FRAME_FOOTER = bytes([0x55, 0xCC])
-FRAME_SIZE = 30  # 4 header + 3*8 targets + 2 footer
-MAX_TARGETS = 3
+FRAME_SIZE   = 30   # 4 header + 3×8 target slots + 2 footer
+MAX_TARGETS  = 3
 
-# Demo parameters per target: (amplitude_x, amplitude_y, omega, phase_x, phase_y, offset_y)
+# Demo parameters per target: (amp_x, amp_y, omega, phase_x, phase_y, offset_y)
 _DEMO_PARAMS = [
-    (400, 500, 0.4, 0.0, 0.0, 800),
+    (400, 500, 0.4, 0.0, 0.0,  800),
     (300, 600, 0.3, 1.0, 2.0, 1600),
     (250, 400, 0.5, 2.5, 1.0, 1200),
 ]
@@ -43,49 +42,60 @@ _DEMO_PARAMS = [
 # Frame parsing
 # ---------------------------------------------------------------------------
 
+def _decode_coord(raw: int) -> int:
+    """
+    HLK-LD2450 non-standard sign encoding:
+      - Read bytes as standard signed int16 (little-endian).
+      - If the result is negative (bit 15 set), the true value is: -32768 - raw
+    This converts the sensor's direction-bit encoding into a real signed integer.
+    Reference: https://github.com/csRon/HLK-LD2450  serial_protocol.py
+    """
+    return raw if raw >= 0 else -32768 - raw
+
+
 def _parse_frame(frame: bytes) -> list[dict]:
     """
-    Parse a 30-byte HLK-LD2450 frame into a list of target dicts.
+    Parse a 30-byte HLK-LD2450 frame.
 
     Frame layout:
-        [0:4]  header  AA FF 03 00
-        [4:12] target 1: x(int16LE), y(int16LE), speed(int16LE), res(uint16LE)
+        [0:4]   header  AA FF 03 00
+        [4:12]  target 1: x(int16LE), y(int16LE), speed(int16LE), res(uint16LE)
         [12:20] target 2
         [20:28] target 3
-        [28:30] footer 55 CC
+        [28:30] footer  55 CC
+
+    Coordinate convention after decoding:
+        x: lateral mm  (negative = left,  positive = right)
+        y: depth mm    (sensor outputs negative = in front; we negate → positive distance)
+
+    An empty slot is indicated by all 8 bytes being 0x00.
     """
-    if len(frame) != FRAME_SIZE:
+    if len(frame) < FRAME_SIZE:
         return []
-    if frame[:4] != FRAME_HEADER or frame[28:30] != FRAME_FOOTER:
+
+    # Locate header inside the received bytes (read_until may prepend garbage)
+    idx = frame.find(FRAME_HEADER)
+    if idx == -1 or idx + FRAME_SIZE > len(frame):
+        return []
+    frame = frame[idx:idx + FRAME_SIZE]
+    if frame[28:30] != FRAME_FOOTER:
         return []
 
     targets = []
     for i in range(MAX_TARGETS):
-        offset = 4 + i * 8
-        slot = frame[offset:offset + 8]
-        x, y, speed, _ = struct.unpack_from("<hhhH", slot)
-        if x == 0 and y == 0:
+        off  = 4 + i * 8
+        slot = frame[off:off + 8]
+        if slot == bytes(8):          # empty slot → all zero
             continue
-        targets.append({"id": i + 1, "x": int(x), "y": int(y)})
+
+        x_raw = int.from_bytes(slot[0:2], 'little', signed=True)
+        y_raw = int.from_bytes(slot[2:4], 'little', signed=True)
+
+        x =  _decode_coord(x_raw)
+        y = -_decode_coord(y_raw)    # negate: sensor y<0 in front → positive distance
+
+        targets.append({"id": i + 1, "x": x, "y": y})
     return targets
-
-
-def _find_frame(buf: bytearray) -> tuple[bytes | None, bytearray]:
-    """
-    Scan buf for a valid 30-byte frame.
-    Returns (frame_bytes, remaining_buffer) or (None, buf) if not found.
-    """
-    idx = buf.find(FRAME_HEADER)
-    if idx == -1:
-        # Keep last 3 bytes in case the header straddles a read boundary
-        return None, buf[-3:]
-    if idx + FRAME_SIZE > len(buf):
-        return None, buf[idx:]
-    candidate = bytes(buf[idx:idx + FRAME_SIZE])
-    if candidate[28:30] == FRAME_FOOTER:
-        return candidate, buf[idx + FRAME_SIZE:]
-    # Header found but footer mismatch; advance past this header and retry
-    return None, buf[idx + 1:]
 
 
 # ---------------------------------------------------------------------------
@@ -98,24 +108,17 @@ async def _open_serial(cfg: SensorConfig) -> serial.Serial:
     return await run_in_executor(_open)
 
 
-async def _read_chunk(ser: serial.Serial, size: int = 64) -> bytes:
-    def _read():
-        return ser.read(size)
-    return await run_in_executor(_read)
-
-
 async def _frame_stream(ser: serial.Serial) -> AsyncIterator[bytes]:
-    buf: bytearray = bytearray()
+    """
+    Use read_until(FRAME_FOOTER) — the same approach as the reference implementation.
+    This is simpler and more reliable than chunk-scanning: pyserial blocks until the
+    footer bytes arrive, then returns exactly one frame worth of data.
+    """
+    def _read_frame():
+        return ser.read_until(FRAME_FOOTER)
     while True:
-        chunk = await _read_chunk(ser)
-        if not chunk:
-            await asyncio.sleep(0.01)
-            continue
-        buf.extend(chunk)
-        while True:
-            frame, buf = _find_frame(buf)
-            if frame is None:
-                break
+        frame = await run_in_executor(_read_frame)
+        if frame:
             yield frame
 
 

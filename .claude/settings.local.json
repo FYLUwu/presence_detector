@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(COMM_PDF=\"/Users/jannickthomsen/.claude/projects/-Users-jannickthomsen-repos-presence-detector/05bb487f-84bb-45bf-9929-9d763c2bb489/tool-results/webfetch-1774980722706-0u0emr.bin\")",
+      "Bash(DATA_PDF=\"/Users/jannickthomsen/.claude/projects/-Users-jannickthomsen-repos-presence-detector/05bb487f-84bb-45bf-9929-9d763c2bb489/tool-results/webfetch-1774980722733-m9vu93.bin\")",
+      "Bash(pdftotext \"$COMM_PDF\" /tmp/serial_comm.txt)",
+      "Bash(pdftotext \"$DATA_PDF\" /tmp/datasheet.txt)"
+    ]
+  }
+}
