@@ -1,0 +1,67 @@
+{
+  "mqtt": {
+    "broker": "localhost",
+    "port": 1883,
+    "keepalive": 60,
+    "username": null,
+    "password": null
+  },
+  "sensor": {
+    "port": "/dev/ttyUSB0",
+    "baudrate": 256000,
+    "timeout": 1.0
+  },
+  "co2": {
+    "port": "/dev/ttyUSB1",
+    "baudrate": 9600,
+    "use_gpio": false,
+    "gpio_pin": 17,
+    "read_interval_seconds": 10,
+    "threshold_ppm": 1000
+  },
+  "gpio": {
+    "presence_pin": 18,
+    "alert_pin": 27
+  },
+  "display": {
+    "i2c_address": "0x3C",
+    "width": 128,
+    "height": 64,
+    "font_size": 10
+  },
+  "zones": [
+    {
+      "name": "desk",
+      "x_min": -2528,
+      "x_max": -127,
+      "y_min": 673,
+      "y_max": 2806
+    },
+    {
+      "name": "door",
+      "x_min": 299,
+      "x_max": 2527,
+      "y_min": 369,
+      "y_max": 3001
+    },
+    {
+      "name": "zone_3",
+      "x_min": -1009,
+      "x_max": 1167,
+      "y_min": 1821,
+      "y_max": 3889
+    }
+  ],
+  "watchdog": {
+    "modules": [
+      "sensor_module",
+      "mqtt_module",
+      "co2_module",
+      "display_module",
+      "gpio_module",
+      "webui_module"
+    ],
+    "check_interval_seconds": 5,
+    "restart_delay_seconds": 3
+  }
+}

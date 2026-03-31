@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRESENCE RADAR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #060a0e;
+    --surface:  #080d12;
+    --grid:     rgba(0,255,120,0.07);
+    --ring:     rgba(0,255,120,0.14);
+    --ring-lbl: #1aff7a;
+    --tgt:      #00ff88;
+    --tgt-glow: rgba(0,255,136,0.5);
+    --zone-def: rgba(0,180,255,0.12);
+    --zone-bdr: #00b4ff;
+    --zone-occ: rgba(255,90,0,0.22);
+    --zone-occ-bdr: #ff5a00;
+    --zone-sel: #ffffff;
+    --sensor:   #00ff88;
+    --side-bg:  #050810;
+    --side-bdr: #0d2030;
+    --txt:      #7aaa8a;
+    --txt-dim:  #3a5a4a;
+    --accent:   #00ff88;
+    --alert:    #ff3c3c;
+    --handle:   #ffffff;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-hdr:  'Orbitron', sans-serif;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--txt);
+    font-family: var(--font-mono);
+    overflow: hidden;
+  }
+
+  #app {
+    display: flex;
+    width: 100vw; height: 100vh;
+  }
+
+  /* ── RADAR PANEL ─────────────────────────────────────────── */
+  #radar-wrap {
+    flex: 1;
+    position: relative;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  #radar-svg {
+    width: 100%; height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+
+  /* scan sweep */
+  #scan-sweep {
+    transform-origin: var(--ox) var(--oy);
+    animation: sweep 3s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes sweep {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* ── SIDEBAR ─────────────────────────────────────────────── */
+  #sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: var(--side-bg);
+    border-left: 1px solid var(--side-bdr);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #sidebar-header {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--side-bdr);
+  }
+  #sidebar-header h1 {
+    font-family: var(--font-hdr);
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  #conn-status {
+    display: flex; align-items: center; gap: 7px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--txt-dim);
+  }
+  #conn-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #ff3c3c;
+    transition: background .3s;
+  }
+  #conn-dot.live { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+  /* stats block */
+  .stat-block {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--side-bdr);
+  }
+  .stat-label {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--txt-dim);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .stat-big {
+    font-family: var(--font-hdr);
+    font-size: 42px;
+    font-weight: 900;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .stat-big.zero { color: var(--txt-dim); }
+
+  .presence-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 2px;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    font-family: var(--font-hdr);
+    font-weight: 600;
+    margin-top: 8px;
+  }
+  .presence-badge.yes {
+    background: rgba(0,255,136,0.12);
+    color: var(--accent);
+    border: 1px solid rgba(0,255,136,0.3);
+  }
+  .presence-badge.no {
+    background: transparent;
+    color: var(--txt-dim);
+    border: 1px solid var(--txt-dim);
+  }
+
+  /* CO2 */
+  #co2-ppm {
+    font-family: var(--font-hdr);
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--accent);
+    transition: color .4s;
+  }
+  #co2-ppm.alert { color: var(--alert); text-shadow: 0 0 12px var(--alert); }
+
+  .alert-badge {
+    display: none;
+    margin-top: 6px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--alert);
+    font-family: var(--font-hdr);
+    animation: blink 1s step-end infinite;
+  }
+  .alert-badge.visible { display: block; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* zones list */
+  #zones-section {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 0 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--side-bdr) transparent;
+  }
+  .section-title {
+    padding: 12px 20px 8px;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--txt-dim);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--side-bdr);
+    margin-bottom: 4px;
+  }
+
+  .zone-row {
+    display: flex; align-items: center;
+    padding: 7px 20px;
+    cursor: pointer;
+    transition: background .15s;
+    gap: 10px;
+  }
+  .zone-row:hover { background: rgba(255,255,255,0.03); }
+  .zone-row.selected { background: rgba(0,255,136,0.05); }
+
+  .zone-occ-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    border: 1px solid var(--zone-bdr);
+    flex-shrink: 0;
+    transition: background .3s, border-color .3s;
+  }
+  .zone-occ-dot.occ {
+    background: var(--zone-occ-bdr);
+    border-color: var(--zone-occ-bdr);
+    box-shadow: 0 0 6px var(--zone-occ-bdr);
+  }
+
+  .zone-name { font-size: 12px; flex: 1; color: var(--txt); }
+  .zone-occ-label { font-size: 10px; color: var(--txt-dim); }
+  .zone-occ-label.occ { color: var(--zone-occ-bdr); }
+
+  /* zone editor */
+  #zone-editor {
+    display: none;
+    padding: 12px 20px;
+    border-top: 1px solid var(--side-bdr);
+    background: rgba(255,255,255,0.02);
+  }
+  #zone-editor.visible { display: block; }
+
+  .editor-title {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--txt-dim);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .field-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 7px;
+  }
+  .field-row label {
+    font-size: 11px;
+    color: var(--txt-dim);
+    width: 52px;
+    flex-shrink: 0;
+  }
+  .field-row input {
+    flex: 1;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--side-bdr);
+    color: var(--txt);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 7px;
+    border-radius: 2px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .field-row input:focus { border-color: var(--accent); }
+
+  .bounds-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .bound-field label { font-size: 10px; color: var(--txt-dim); display: block; margin-bottom: 2px; }
+  .bound-field input {
+    width: 100%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--side-bdr);
+    color: var(--txt);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 7px;
+    border-radius: 2px;
+    outline: none;
+  }
+  .bound-field input:focus { border-color: var(--accent); }
+
+  .editor-hint { font-size: 10px; color: var(--txt-dim); margin-bottom: 8px; line-height: 1.5; }
+
+  /* buttons */
+  .btn-row { display: flex; gap: 8px; margin-top: 4px; }
+
+  .btn {
+    flex: 1;
+    padding: 7px 0;
+    font-family: var(--font-hdr);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-radius: 2px;
+    cursor: pointer;
+    border: none;
+    transition: background .2s, box-shadow .2s;
+  }
+  .btn-primary {
+    background: rgba(0,255,136,0.12);
+    color: var(--accent);
+    border: 1px solid rgba(0,255,136,0.3);
+  }
+  .btn-primary:hover { background: rgba(0,255,136,0.2); box-shadow: 0 0 12px rgba(0,255,136,0.2); }
+
+  .btn-danger {
+    background: rgba(255,60,60,0.1);
+    color: var(--alert);
+    border: 1px solid rgba(255,60,60,0.25);
+  }
+  .btn-danger:hover { background: rgba(255,60,60,0.18); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--txt-dim);
+    border: 1px solid var(--side-bdr);
+  }
+  .btn-ghost:hover { color: var(--txt); border-color: var(--txt); }
+
+  #sidebar-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--side-bdr);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #save-status {
+    font-size: 10px;
+    color: var(--txt-dim);
+    text-align: center;
+    min-height: 14px;
+    transition: color .3s;
+  }
+  #save-status.ok  { color: var(--accent); }
+  #save-status.err { color: var(--alert); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── RADAR ─────────────────────────────────────────────────── -->
+  <div id="radar-wrap">
+    <svg id="radar-svg" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="glow-tgt">
+          <feGaussianBlur stdDeviation="4" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glow-zone">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glow-sensor">
+          <feGaussianBlur stdDeviation="5" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <radialGradient id="sweep-grad" cx="0%" cy="100%" r="100%">
+          <stop offset="0%"   stop-color="#00ff88" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="#00ff88" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="bg-vignette" cx="50%" cy="100%" r="80%">
+          <stop offset="0%"   stop-color="#0a1a10" stop-opacity="0.4"/>
+          <stop offset="100%" stop-color="#060a0e" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+
+      <!-- background vignette -->
+      <rect id="bg-rect" width="100%" height="100%" fill="var(--surface)"/>
+      <rect id="vignette" width="100%" height="100%" fill="url(#bg-vignette)"/>
+
+      <!-- grid lines -->
+      <g id="grid-v"></g>
+      <g id="grid-h"></g>
+
+      <!-- distance rings -->
+      <g id="rings"></g>
+      <g id="ring-labels"></g>
+
+      <!-- scan sweep (rotates around sensor origin) -->
+      <g id="sweep-group">
+        <path id="scan-sweep" fill="url(#sweep-grad)" opacity="0.9" pointer-events="none"/>
+      </g>
+
+      <!-- zones layer -->
+      <g id="zones-layer"></g>
+
+      <!-- targets layer -->
+      <g id="targets-layer"></g>
+
+      <!-- sensor icon (drawn last so it's on top) -->
+      <g id="sensor-icon"></g>
+    </svg>
+  </div>
+
+  <!-- ── SIDEBAR ───────────────────────────────────────────────── -->
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <h1>Presence Radar</h1>
+      <div id="conn-status">
+        <div id="conn-dot"></div>
+        <span id="conn-label">CONNECTING</span>
+      </div>
+    </div>
+
+    <div class="stat-block">
+      <div class="stat-label">Detected Persons</div>
+      <div id="count-big" class="stat-big zero">0</div>
+      <div id="presence-badge" class="presence-badge no">NO PRESENCE</div>
+    </div>
+
+    <div class="stat-block">
+      <div class="stat-label">CO₂ Level</div>
+      <div><span id="co2-ppm">—</span><span style="font-size:13px;color:var(--txt-dim);margin-left:6px;">ppm</span></div>
+      <div id="co2-alert-badge" class="alert-badge">⚠ THRESHOLD EXCEEDED</div>
+    </div>
+
+    <div id="zones-section">
+      <div class="section-title">Zones</div>
+      <div id="zones-list"></div>
+    </div>
+
+    <div id="zone-editor">
+      <div class="editor-title">Edit Zone</div>
+      <div class="field-row">
+        <label>Name</label>
+        <input id="ed-name" type="text" maxlength="24"/>
+      </div>
+      <div class="editor-hint">Drag zone on radar to move.<br>Drag corner handles to resize.</div>
+      <div class="bounds-grid">
+        <div class="bound-field"><label>X min (mm)</label><input id="ed-xmin" type="number"/></div>
+        <div class="bound-field"><label>X max (mm)</label><input id="ed-xmax" type="number"/></div>
+        <div class="bound-field"><label>Y min (mm)</label><input id="ed-ymin" type="number"/></div>
+        <div class="bound-field"><label>Y max (mm)</label><input id="ed-ymax" type="number"/></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="deselectZone()">Done</button>
+        <button class="btn btn-danger" onclick="deleteSelectedZone()">Delete</button>
+      </div>
+    </div>
+
+    <div id="sidebar-footer">
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="addZone()">+ Add Zone</button>
+        <button class="btn btn-primary" onclick="saveZones()">Save Zones</button>
+      </div>
+      <div id="save-status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// COORDINATE SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+// HLK-LD2450: x ∈ [-4000, +4000] mm, y ∈ [0, 6000] mm
+// SVG: sensor at (originX, originY), y increases upward (flipped)
+
+const X_RANGE = 4000;   // ±4000 mm
+const Y_RANGE = 6000;   // 0..6000 mm
+const PAD_TOP = 28;
+const PAD_BOTTOM = 48;
+const PAD_SIDE = 20;
+
+let originX = 0, originY = 0, scale = 0.1;
+
+function calcLayout() {
+  const svg = document.getElementById('radar-svg');
+  const W = svg.clientWidth;
+  const H = svg.clientHeight;
+  const usableW = W - PAD_SIDE * 2;
+  const usableH = H - PAD_TOP - PAD_BOTTOM;
+  const scaleX = usableW / (X_RANGE * 2);
+  const scaleY = usableH / Y_RANGE;
+  scale = Math.min(scaleX, scaleY);
+  originX = W / 2;
+  originY = H - PAD_BOTTOM;
+}
+
+const toSvg = (xMm, yMm) => ({
+  x: originX + xMm * scale,
+  y: originY - yMm * scale,
+});
+const toMm = (svgX, svgY) => ({
+  x: Math.round((svgX - originX) / scale),
+  y: Math.round((originY - svgY) / scale),
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────────
+let zones = [];          // {name, x_min, x_max, y_min, y_max, occupied}
+let selectedZone = -1;
+let targets = [];        // current from server
+let displayTargets = {}; // {id: {x,y}} — smoothly interpolated
+
+// Drag/resize state
+let interaction = null;
+// { type:'drag'|'resize', zoneIdx, handle:'NW'|'N'|'NE'|'E'|'SE'|'S'|'SW'|'W',
+//   startSvgX, startSvgY, startZone:{...} }
+
+let _zonesFromServer = []; // occupancy source of truth
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WEBSOCKET
+// ─────────────────────────────────────────────────────────────────────────────
+let ws = null;
+let wsRetryDelay = 1000;
+
+function connectWs() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onopen = () => {
+    setConn(true);
+    wsRetryDelay = 1000;
+  };
+
+  ws.onmessage = (ev) => {
+    const d = JSON.parse(ev.data);
+    targets = d.targets || [];
+    updateDisplayTargets(targets);
+
+    // Merge occupancy from server, preserve local zone bounds
+    _zonesFromServer = d.zones || [];
+    if (zones.length === 0 && _zonesFromServer.length > 0) {
+      zones = _zonesFromServer.map(z => ({...z}));
+    } else {
+      // Update only occupancy
+      _zonesFromServer.forEach(sz => {
+        const local = zones.find(z => z.name === sz.name);
+        if (local) local.occupied = sz.occupied;
+      });
+    }
+
+    updateSidebar(d);
+    drawAll();
+  };
+
+  ws.onclose = () => {
+    setConn(false);
+    setTimeout(connectWs, wsRetryDelay);
+    wsRetryDelay = Math.min(wsRetryDelay * 1.5, 15000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+function setConn(live) {
+  document.getElementById('conn-dot').className = live ? 'live' : '';
+  document.getElementById('conn-label').textContent = live ? 'LIVE' : 'RECONNECTING…';
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TARGET INTERPOLATION
+// ─────────────────────────────────────────────────────────────────────────────
+const LERP = 0.18;
+
+function updateDisplayTargets(serverTargets) {
+  const activeIds = new Set(serverTargets.map(t => t.id));
+  // Remove stale
+  for (const id in displayTargets) {
+    if (!activeIds.has(parseInt(id))) delete displayTargets[id];
+  }
+  // Lerp toward server positions
+  serverTargets.forEach(t => {
+    if (!displayTargets[t.id]) {
+      displayTargets[t.id] = { x: t.x, y: t.y };
+    } else {
+      displayTargets[t.id].x += (t.x - displayTargets[t.id].x) * LERP;
+      displayTargets[t.id].y += (t.y - displayTargets[t.id].y) * LERP;
+    }
+  });
+}
+
+// Smooth animation loop
+function animLoop() {
+  if (Object.keys(displayTargets).length > 0) drawTargets();
+  requestAnimationFrame(animLoop);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRAW
+// ─────────────────────────────────────────────────────────────────────────────
+const ns = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs={}) => {
+  const e = document.createElementNS(ns, tag);
+  for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,v);
+  return e;
+};
+
+function drawStatic() {
+  drawGrid();
+  drawRings();
+  drawSensor();
+  updateSweepOrigin();
+}
+
+function drawGrid() {
+  const gv = document.getElementById('grid-v');
+  const gh = document.getElementById('grid-h');
+  gv.innerHTML = ''; gh.innerHTML = '';
+  const svg = document.getElementById('radar-svg');
+  const W = svg.clientWidth, H = svg.clientHeight;
+
+  // Vertical lines every 1000mm
+  for (let x = -X_RANGE; x <= X_RANGE; x += 1000) {
+    const sx = toSvg(x, 0).x;
+    const line = el('line', { x1:sx, y1:0, x2:sx, y2:H,
+      stroke: x===0 ? 'rgba(0,255,120,0.18)' : 'var(--grid)',
+      'stroke-width': x===0 ? 1 : 0.5 });
+    gv.appendChild(line);
+  }
+  // Horizontal lines every 1000mm
+  for (let y = 0; y <= Y_RANGE; y += 1000) {
+    const sy = toSvg(0, y).y;
+    const line = el('line', { x1:0, y1:sy, x2:W, y2:sy,
+      stroke: 'var(--grid)', 'stroke-width': 0.5 });
+    gh.appendChild(line);
+  }
+}
+
+function drawRings() {
+  const g = document.getElementById('rings');
+  const gl = document.getElementById('ring-labels');
+  g.innerHTML = ''; gl.innerHTML = '';
+
+  for (let d = 1000; d <= Y_RANGE; d += 1000) {
+    const r = d * scale;
+    // Semi-arc (upper half only since sensor is at bottom)
+    const start = toSvg(-d, 0); // leftmost point on ring at y=0
+    // Actually draw a full circle clipped by the visible area
+    const arc = el('circle', {
+      cx: originX, cy: originY,
+      r: r,
+      fill: 'none',
+      stroke: 'var(--ring)',
+      'stroke-width': 0.8,
+      'stroke-dasharray': '3 6',
+    });
+    g.appendChild(arc);
+
+    // Label at top of ring (along center axis)
+    const lp = toSvg(0, d);
+    const lbl = el('text', {
+      x: lp.x + 5, y: lp.y + 4,
+      fill: 'var(--ring-lbl)',
+      'font-size': 9,
+      'font-family': 'Share Tech Mono, monospace',
+      opacity: 0.7,
+    });
+    lbl.textContent = `${d/1000}m`;
+    gl.appendChild(lbl);
+  }
+}
+
+function drawSensor() {
+  const g = document.getElementById('sensor-icon');
+  g.innerHTML = '';
+
+  // FOV cone
+  const coneAngle = 60; // degrees half-angle
+  const coneR = Y_RANGE * scale;
+  const rad = coneAngle * Math.PI / 180;
+  const cx = originX, cy = originY;
+  const lx = cx - Math.sin(rad) * coneR;
+  const ly = cy - Math.cos(rad) * coneR;
+  const rx = cx + Math.sin(rad) * coneR;
+  const ry = cy - Math.cos(rad) * coneR;
+
+  const cone = el('path', {
+    d: `M${cx},${cy} L${lx},${ly} A${coneR},${coneR} 0 0,1 ${rx},${ry} Z`,
+    fill: 'rgba(0,255,136,0.03)',
+    stroke: 'rgba(0,255,136,0.08)',
+    'stroke-width': 1,
+    'pointer-events': 'none',
+  });
+  g.appendChild(cone);
+
+  // Sensor triangle
+  const size = 10;
+  const tx = cx, ty = cy;
+  const tri = el('polygon', {
+    points: `${tx},${ty-size*1.4} ${tx-size},${ty+size*0.5} ${tx+size},${ty+size*0.5}`,
+    fill: 'var(--sensor)',
+    filter: 'url(#glow-sensor)',
+  });
+  g.appendChild(tri);
+
+  // Sensor label
+  const lbl = el('text', {
+    x: tx, y: ty + size * 2,
+    'text-anchor': 'middle',
+    fill: 'var(--sensor)',
+    'font-size': 9,
+    'font-family': 'Share Tech Mono, monospace',
+    opacity: 0.6,
+  });
+  lbl.textContent = 'HLK-LD2450';
+  g.appendChild(lbl);
+}
+
+function updateSweepOrigin() {
+  const sweep = document.getElementById('scan-sweep');
+  const r = Y_RANGE * scale * 0.85;
+  const a1 = -90 * Math.PI / 180;
+  const a2 = (-90 + 25) * Math.PI / 180;
+  const x1 = originX + r * Math.cos(a1);
+  const y1 = originY + r * Math.sin(a1);
+  const x2 = originX + r * Math.cos(a2);
+  const y2 = originY + r * Math.sin(a2);
+  sweep.setAttribute('d',
+    `M${originX},${originY} L${x1},${y1} A${r},${r} 0 0,1 ${x2},${y2} Z`);
+  sweep.style.transformOrigin = `${originX}px ${originY}px`;
+
+  document.getElementById('sweep-group').style.transformOrigin =
+    `${originX}px ${originY}px`;
+}
+
+function drawZones() {
+  const layer = document.getElementById('zones-layer');
+  layer.innerHTML = '';
+
+  zones.forEach((z, idx) => {
+    const tl = toSvg(z.x_min, z.y_max);
+    const br = toSvg(z.x_max, z.y_min);
+    const w = br.x - tl.x;
+    const h = br.y - tl.y;
+    const sel = idx === selectedZone;
+    const occ = z.occupied;
+
+    const g = document.createElementNS(ns, 'g');
+
+    // Zone fill rect
+    const rect = el('rect', {
+      x: tl.x, y: tl.y, width: w, height: h,
+      fill: occ ? 'var(--zone-occ)' : 'var(--zone-def)',
+      stroke: sel ? 'var(--zone-sel)'
+               : occ ? 'var(--zone-occ-bdr)' : 'var(--zone-bdr)',
+      'stroke-width': sel ? 1.5 : 1,
+      'stroke-dasharray': sel ? '5 3' : 'none',
+      rx: 2,
+      filter: occ ? 'url(#glow-zone)' : 'none',
+      cursor: 'move',
+      opacity: 0.9,
+    });
+
+    // Hit area (slightly larger)
+    const hit = el('rect', {
+      x: tl.x-4, y: tl.y-4, width: w+8, height: h+8,
+      fill: 'transparent',
+      cursor: 'move',
+      'data-idx': idx,
+    });
+    hit.addEventListener('mousedown', (e) => startDrag(e, idx));
+
+    // Zone label
+    const lbl = el('text', {
+      x: tl.x + w/2, y: tl.y + 14,
+      'text-anchor': 'middle',
+      fill: occ ? 'var(--zone-occ-bdr)' : 'var(--zone-bdr)',
+      'font-size': 11,
+      'font-family': 'Share Tech Mono, monospace',
+      'pointer-events': 'none',
+      'font-weight': 'bold',
+    });
+    lbl.textContent = z.name.toUpperCase();
+    g.appendChild(rect);
+    g.appendChild(lbl);
+    g.appendChild(hit);
+
+    // Resize handles (8 directions)
+    if (sel) {
+      const handles = [
+        ['NW', tl.x, tl.y],
+        ['N',  tl.x+w/2, tl.y],
+        ['NE', tl.x+w, tl.y],
+        ['E',  tl.x+w, tl.y+h/2],
+        ['SE', tl.x+w, tl.y+h],
+        ['S',  tl.x+w/2, tl.y+h],
+        ['SW', tl.x, tl.y+h],
+        ['W',  tl.x, tl.y+h/2],
+      ];
+      handles.forEach(([dir, hx, hy]) => {
+        const cursors = {
+          NW:'nw-resize', N:'n-resize', NE:'ne-resize',
+          E:'e-resize',   SE:'se-resize', S:'s-resize',
+          SW:'sw-resize', W:'w-resize'
+        };
+        const hRect = el('rect', {
+          x: hx-5, y: hy-5, width: 10, height: 10,
+          fill: 'var(--handle)',
+          stroke: '#000', 'stroke-width': 1,
+          rx: 1,
+          cursor: cursors[dir],
+          'data-idx': idx, 'data-handle': dir,
+        });
+        hRect.addEventListener('mousedown', (e) => startResize(e, idx, dir));
+        g.appendChild(hRect);
+      });
+    }
+
+    layer.appendChild(g);
+  });
+}
+
+function drawTargets() {
+  const layer = document.getElementById('targets-layer');
+  layer.innerHTML = '';
+
+  Object.entries(displayTargets).forEach(([idStr, pos]) => {
+    const id = parseInt(idStr);
+    const serverTarget = targets.find(t => t.id === id);
+    if (!serverTarget) return;
+    const p = toSvg(pos.x, pos.y);
+
+    const g = document.createElementNS(ns, 'g');
+
+    // Outer glow ring
+    g.appendChild(el('circle', {
+      cx: p.x, cy: p.y, r: 14,
+      fill: 'none',
+      stroke: 'var(--tgt)',
+      'stroke-width': 0.5,
+      opacity: 0.3,
+    }));
+
+    // Main dot
+    g.appendChild(el('circle', {
+      cx: p.x, cy: p.y, r: 7,
+      fill: 'var(--tgt)',
+      filter: 'url(#glow-tgt)',
+    }));
+
+    // ID label
+    const lbl = el('text', {
+      x: p.x, y: p.y + 4,
+      'text-anchor': 'middle',
+      fill: '#000',
+      'font-size': 8,
+      'font-family': 'Share Tech Mono, monospace',
+      'font-weight': 'bold',
+      'pointer-events': 'none',
+    });
+    lbl.textContent = id;
+    g.appendChild(lbl);
+
+    // Coord label
+    const coord = el('text', {
+      x: p.x + 11, y: p.y - 8,
+      fill: 'var(--tgt)',
+      'font-size': 9,
+      'font-family': 'Share Tech Mono, monospace',
+      opacity: 0.8,
+      'pointer-events': 'none',
+    });
+    coord.textContent = `${serverTarget.x},${serverTarget.y}`;
+    g.appendChild(coord);
+
+    layer.appendChild(g);
+  });
+}
+
+function drawAll() {
+  drawZones();
+  drawTargets();
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRAG & RESIZE
+// ─────────────────────────────────────────────────────────────────────────────
+function getSvgPoint(e) {
+  const svg = document.getElementById('radar-svg');
+  const rect = svg.getBoundingClientRect();
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+  };
+}
+
+function startDrag(e, idx) {
+  e.stopPropagation();
+  e.preventDefault();
+  selectZone(idx);
+  const p = getSvgPoint(e);
+  interaction = {
+    type: 'drag', zoneIdx: idx,
+    startSvgX: p.x, startSvgY: p.y,
+    startZone: {...zones[idx]},
+  };
+}
+
+function startResize(e, idx, handle) {
+  e.stopPropagation();
+  e.preventDefault();
+  const p = getSvgPoint(e);
+  interaction = {
+    type: 'resize', zoneIdx: idx, handle,
+    startSvgX: p.x, startSvgY: p.y,
+    startZone: {...zones[idx]},
+  };
+}
+
+document.getElementById('radar-svg').addEventListener('mousemove', (e) => {
+  if (!interaction) return;
+  const p = getSvgPoint(e);
+  const dx = p.x - interaction.startSvgX;
+  const dy = p.y - interaction.startSvgY;
+  const dxMm = Math.round(dx / scale);
+  const dyMm = Math.round(-dy / scale); // flip y
+  const z = interaction.startZone;
+  const cur = zones[interaction.zoneIdx];
+  const MIN_SIZE = 100; // mm
+
+  if (interaction.type === 'drag') {
+    cur.x_min = z.x_min + dxMm;
+    cur.x_max = z.x_max + dxMm;
+    cur.y_min = z.y_min + dyMm;
+    cur.y_max = z.y_max + dyMm;
+  } else {
+    const h = interaction.handle;
+    if (h.includes('W')) cur.x_min = Math.min(z.x_min + dxMm, z.x_max - MIN_SIZE);
+    if (h.includes('E')) cur.x_max = Math.max(z.x_max + dxMm, z.x_min + MIN_SIZE);
+    if (h.includes('N')) cur.y_max = Math.max(z.y_max + dyMm, z.y_min + MIN_SIZE);
+    if (h.includes('S')) cur.y_min = Math.min(z.y_min + dyMm, z.y_max - MIN_SIZE);
+  }
+  updateEditorFields();
+  drawAll();
+});
+
+document.getElementById('radar-svg').addEventListener('mouseup', () => {
+  interaction = null;
+});
+document.addEventListener('mouseup', () => { interaction = null; });
+
+// Click on empty SVG area → deselect
+document.getElementById('radar-svg').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('radar-svg') ||
+      e.target.id === 'bg-rect' || e.target.id === 'vignette') {
+    deselectZone();
+  }
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIDEBAR / ZONE EDITOR
+// ─────────────────────────────────────────────────────────────────────────────
+function updateSidebar(d) {
+  const count = d.count || 0;
+  const countEl = document.getElementById('count-big');
+  countEl.textContent = count;
+  countEl.className = 'stat-big' + (count === 0 ? ' zero' : '');
+
+  const badge = document.getElementById('presence-badge');
+  badge.textContent = d.presence ? 'PRESENCE DETECTED' : 'NO PRESENCE';
+  badge.className = 'presence-badge ' + (d.presence ? 'yes' : 'no');
+
+  const co2El = document.getElementById('co2-ppm');
+  co2El.textContent = d.co2_ppm || '—';
+  co2El.className = d.co2_alert ? 'alert' : '';
+
+  const alertBadge = document.getElementById('co2-alert-badge');
+  alertBadge.className = 'alert-badge' + (d.co2_alert ? ' visible' : '');
+
+  renderZoneList();
+}
+
+function renderZoneList() {
+  const list = document.getElementById('zones-list');
+  list.innerHTML = '';
+  zones.forEach((z, idx) => {
+    const row = document.createElement('div');
+    row.className = 'zone-row' + (idx === selectedZone ? ' selected' : '');
+    row.innerHTML = `
+      <div class="zone-occ-dot${z.occupied ? ' occ' : ''}"></div>
+      <div class="zone-name">${z.name}</div>
+      <div class="zone-occ-label${z.occupied ? ' occ' : ''}">${z.occupied ? 'OCCUPIED' : 'EMPTY'}</div>
+    `;
+    row.addEventListener('click', () => selectZone(idx));
+    list.appendChild(row);
+  });
+}
+
+function selectZone(idx) {
+  selectedZone = idx;
+  updateEditorFields();
+  document.getElementById('zone-editor').className = 'visible';
+  renderZoneList();
+  drawAll();
+}
+
+function deselectZone() {
+  selectedZone = -1;
+  document.getElementById('zone-editor').className = '';
+  renderZoneList();
+  drawAll();
+}
+
+function updateEditorFields() {
+  if (selectedZone < 0 || selectedZone >= zones.length) return;
+  const z = zones[selectedZone];
+  document.getElementById('ed-name').value = z.name;
+  document.getElementById('ed-xmin').value = z.x_min;
+  document.getElementById('ed-xmax').value = z.x_max;
+  document.getElementById('ed-ymin').value = z.y_min;
+  document.getElementById('ed-ymax').value = z.y_max;
+}
+
+// Sync manual input edits back to zone
+['ed-name','ed-xmin','ed-xmax','ed-ymin','ed-ymax'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    if (selectedZone < 0) return;
+    const z = zones[selectedZone];
+    z.name  = document.getElementById('ed-name').value || z.name;
+    z.x_min = parseInt(document.getElementById('ed-xmin').value) || z.x_min;
+    z.x_max = parseInt(document.getElementById('ed-xmax').value) || z.x_max;
+    z.y_min = parseInt(document.getElementById('ed-ymin').value) || z.y_min;
+    z.y_max = parseInt(document.getElementById('ed-ymax').value) || z.y_max;
+    renderZoneList();
+    drawAll();
+  });
+});
+
+function addZone() {
+  const newZone = {
+    name: `zone_${zones.length + 1}`,
+    x_min: -400, x_max: 400,
+    y_min: 1000, y_max: 2000,
+    occupied: false,
+  };
+  zones.push(newZone);
+  selectZone(zones.length - 1);
+}
+
+function deleteSelectedZone() {
+  if (selectedZone < 0) return;
+  zones.splice(selectedZone, 1);
+  deselectZone();
+}
+
+async function saveZones() {
+  const payload = zones.map(({ occupied, ...rest }) => rest); // strip runtime field
+  try {
+    const res = await fetch('/api/zones', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    const status = document.getElementById('save-status');
+    if (data.ok) {
+      status.textContent = `✓ ${data.count} zones saved`;
+      status.className = 'ok';
+    } else {
+      status.textContent = `✗ ${data.error}`;
+      status.className = 'err';
+    }
+    setTimeout(() => { status.textContent = ''; status.className = ''; }, 3000);
+  } catch (e) {
+    const status = document.getElementById('save-status');
+    status.textContent = `✗ ${e.message}`;
+    status.className = 'err';
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESIZE OBSERVER — redraw static elements on layout change
+// ─────────────────────────────────────────────────────────────────────────────
+const ro = new ResizeObserver(() => {
+  calcLayout();
+  drawStatic();
+  drawAll();
+});
+ro.observe(document.getElementById('radar-wrap'));
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOT
+// ─────────────────────────────────────────────────────────────────────────────
+calcLayout();
+drawStatic();
+requestAnimationFrame(animLoop);
+connectWs();
+</script>
+</body>
+</html>
