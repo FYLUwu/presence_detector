@@ -121,13 +121,13 @@ async def _mqtt_co2_listener(cfg) -> None:
                 port=cfg.mqtt.port,
                 keepalive=cfg.mqtt.keepalive,
             ) as client:
-                await client.subscribe("sensor/CO2/ppm")
+                await client.subscribe("sensor/bme680/gas")
                 await client.subscribe("sensor/CO2/alert")
                 async for msg in client.messages:
                     topic = str(msg.topic)
                     payload = msg.payload.decode(errors="replace").strip()
-                    if topic == "sensor/CO2/ppm":
-                        _co2_state["ppm"] = int(payload)
+                    if topic == "sensor/bme680/gas":
+                        _co2_state["ppm"] = int(float(payload))
                     elif topic == "sensor/CO2/alert":
                         _co2_state["alert"] = payload == "true"
         except Exception as e:

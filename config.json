@@ -1,13 +1,13 @@
 {
   "mqtt": {
-    "broker": "localhost",
+    "broker": "10.11.165.68",
     "port": 1883,
     "keepalive": 60,
-    "username": null,
-    "password": null
+    "username": "user",
+    "password": "password"
   },
   "sensor": {
-    "port": "/dev/ttyUSB0",
+    "port": "/dev/ttyAMA0",
     "baudrate": 256000,
     "timeout": 1.0
   },

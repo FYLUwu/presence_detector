@@ -16,7 +16,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import random
 import socket
 from dataclasses import dataclass, field
 
@@ -96,7 +95,7 @@ async def _mqtt_listener(cfg: AppConfig, state: DisplayState) -> None:
     topics = [
         "sensor/HLK-LD2450/count",
         "sensor/HLK-LD2450/presence",
-        "sensor/CO2/ppm",
+        "sensor/bme680/gas",
         "sensor/CO2/alert",
     ]
     while True:
@@ -112,8 +111,8 @@ async def _mqtt_listener(cfg: AppConfig, state: DisplayState) -> None:
                         state.count = int(payload)
                     elif topic == "sensor/HLK-LD2450/presence":
                         state.presence = payload == "true"
-                    elif topic == "sensor/CO2/ppm":
-                        state.co2_ppm = int(payload)
+                    elif topic == "sensor/bme680/gas":
+                        state.co2_ppm = int(float(payload))
                     elif topic == "sensor/CO2/alert":
                         state.co2_alert = payload == "true"
         except aiomqtt.MqttError as e:
@@ -128,26 +127,13 @@ async def _mqtt_listener(cfg: AppConfig, state: DisplayState) -> None:
 # Render loop
 # ---------------------------------------------------------------------------
 
-_demo_co2 = 650
-
-
-async def _render_loop(cfg: AppConfig, state: DisplayState, demo: bool, device=None) -> None:
-    global _demo_co2
+async def _render_loop(cfg: AppConfig, state: DisplayState, device=None) -> None:
     while True:
-        if demo:
-            # Drive state with synthetic values
-            _demo_co2 = max(400, min(1800, _demo_co2 + random.randint(-20, 25)))
-            state.count = random.randint(0, 3)
-            state.presence = state.count > 0
-            state.co2_ppm = _demo_co2
-            state.co2_alert = _demo_co2 > cfg.co2.threshold_ppm
-
         try:
             image = _render_image(state, cfg)
             if device is not None:
                 device.display(image)
             else:
-                # Demo: pretty-print to stdout
                 ip = get_ip_address()
                 uptime = get_uptime()
                 alert_flag = " !ALERT!" if state.co2_alert else ""
@@ -169,21 +155,17 @@ async def main() -> None:
     cfg = load_config()
     state = DisplayState()
 
-    demo = is_demo_mode(lambda: _try_get_device(cfg))
-    if demo:
-        logger.warning("DEMO MODE: OLED unavailable — rendering to stdout")
+    no_oled = is_demo_mode(lambda: _try_get_device(cfg))
+    if no_oled:
+        logger.warning("No OLED hardware — rendering to stdout")
         device = None
     else:
         device = _try_get_device(cfg)
 
-    if demo:
-        # No MQTT needed in pure demo; render loop drives the state
-        await _render_loop(cfg, state, demo=True, device=None)
-    else:
-        await asyncio.gather(
-            _mqtt_listener(cfg, state),
-            _render_loop(cfg, state, demo=False, device=device),
-        )
+    await asyncio.gather(
+        _mqtt_listener(cfg, state),
+        _render_loop(cfg, state, device=device),
+    )
 
 
 if __name__ == "__main__":

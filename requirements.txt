@@ -4,6 +4,5 @@ luma.oled>=3.12
 Pillow>=10.0
 # Installed only on ARM targets (Raspberry Pi); skipped on x86 dev machines
 RPi.GPIO>=0.7.1; platform_machine == "armv7l" or platform_machine == "aarch64"
-mh-z19>=1.0
 fastapi>=0.111
 uvicorn[standard]>=0.29
