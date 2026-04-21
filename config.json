@@ -24,10 +24,15 @@
     "alert_pin": 27
   },
   "display": {
-    "i2c_address": "0x3C",
-    "width": 128,
-    "height": 64,
-    "font_size": 10
+    "type": "ili9341",
+    "width": 240,
+    "height": 320,
+    "font_size": 16,
+    "rst_pin": 25,
+    "cs_pin": 8,
+    "rs_pin": 24,
+    "wr_pin": 23,
+    "data_pins": [0, 1, 2, 3, 4, 17, 27, 22]
   },
   "zones": [
     {

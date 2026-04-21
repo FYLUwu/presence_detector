@@ -77,16 +77,24 @@ class GpioConfig:
 
 @dataclass
 class DisplayConfig:
-    i2c_address: str
     width: int
     height: int
     font_size: int
+    type: str = "ili9341"
+    # ILI9341 8-bit parallel pins (BCM)
+    rst_pin: int = 25
+    cs_pin: int = 8
+    rs_pin: int = 24
+    wr_pin: int = 23
+    data_pins: list = field(default_factory=lambda: [0, 1, 2, 3, 4, 17, 27, 22])
+    # SSD1306 I2C (kept for backward compat)
+    i2c_address: str = "0x3C"
 
     def __post_init__(self) -> None:
-        if not self.i2c_address.startswith("0x"):
-            raise ConfigError(f"display.i2c_address must be hex (e.g. '0x3C'), got '{self.i2c_address}'")
         if self.width <= 0 or self.height <= 0:
             raise ConfigError("display.width and height must be positive")
+        if self.type == "ssd1306" and not self.i2c_address.startswith("0x"):
+            raise ConfigError(f"display.i2c_address must be hex (e.g. '0x3C'), got '{self.i2c_address}'")
 
 
 @dataclass
