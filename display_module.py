@@ -173,7 +173,7 @@ class ILI9341Parallel:
         # Exit sleep, then display on
         self._cmd(self._CMD_SLPOUT); time.sleep(0.12)
         self._cmd(self._CMD_DISPON)
-        self._fill(0x00, 0x1F)   # solid blue → confirms pixel writes work
+        self._fill(0xF8, 0x00)   # solid red → confirms pixel writes work
 
     # -- public API --
 
