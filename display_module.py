@@ -135,11 +135,44 @@ class ILI9341Parallel:
     # -- init sequence --
 
     def _init(self) -> None:
-        self._cmd(self._CMD_SWRESET); time.sleep(0.15)
-        self._cmd(self._CMD_SLPOUT);  time.sleep(0.5)
-        self._cmd(self._CMD_COLMOD);  self._data_bytes(0x55)   # 16-bit RGB565
-        self._cmd(self._CMD_MADCTL);  self._data_bytes(0x48)   # portrait, BGR
-        self._cmd(self._CMD_DISPON);  time.sleep(0.1)
+        # Full Adafruit/standard ILI9341 power-on sequence.
+        # Minimal init (only COLMOD+MADCTL+DISPON) leaves most panels blank.
+        self._cmd(0xEF); self._data_bytes(0x03, 0x80, 0x02)
+        self._cmd(0xCF); self._data_bytes(0x00, 0xC1, 0x30)
+        self._cmd(0xED); self._data_bytes(0x64, 0x03, 0x12, 0x81)
+        self._cmd(0xE8); self._data_bytes(0x85, 0x00, 0x78)
+        self._cmd(0xCB); self._data_bytes(0x39, 0x2C, 0x00, 0x34, 0x02)
+        self._cmd(0xF7); self._data_bytes(0x20)
+        self._cmd(0xEA); self._data_bytes(0x00, 0x00)
+        # Power control
+        self._cmd(0xC0); self._data_bytes(0x23)
+        self._cmd(0xC1); self._data_bytes(0x10)
+        # VCOM
+        self._cmd(0xC5); self._data_bytes(0x3E, 0x28)
+        self._cmd(0xC7); self._data_bytes(0x86)
+        # Memory access & pixel format
+        self._cmd(self._CMD_MADCTL); self._data_bytes(0x48)   # portrait, BGR
+        self._cmd(self._CMD_COLMOD); self._data_bytes(0x55)   # RGB565
+        # Frame rate (79 Hz)
+        self._cmd(0xB1); self._data_bytes(0x00, 0x18)
+        # Display function control
+        self._cmd(0xB6); self._data_bytes(0x08, 0x82, 0x27)
+        # 3-Gamma off, gamma curve 1
+        self._cmd(0xF2); self._data_bytes(0x00)
+        self._cmd(0x26); self._data_bytes(0x01)
+        # Positive gamma correction
+        self._cmd(0xE0); self._data_bytes(
+            0x0F, 0x31, 0x2B, 0x0C, 0x0E, 0x08,
+            0x4E, 0xF1, 0x37, 0x07, 0x10, 0x03,
+            0x0E, 0x09, 0x00)
+        # Negative gamma correction
+        self._cmd(0xE1); self._data_bytes(
+            0x00, 0x0E, 0x14, 0x03, 0x11, 0x07,
+            0x31, 0xC1, 0x48, 0x08, 0x0F, 0x0C,
+            0x31, 0x36, 0x0F)
+        # Exit sleep, then display on
+        self._cmd(self._CMD_SLPOUT); time.sleep(0.12)
+        self._cmd(self._CMD_DISPON)
 
     # -- public API --
 
@@ -154,11 +187,12 @@ class ILI9341Parallel:
         self._cmd(self._CMD_RAMWR)
 
         img_rgb = image.convert("RGB")
+        raw = img_rgb.tobytes()   # R,G,B,R,G,B,… — avoids deprecated getdata()
         G = self._G
         G.output(self._cs, G.LOW)
         G.output(self._rs, G.HIGH)
-        for r, g, b in img_rgb.getdata():
-            # RGB → RGB565 big-endian
+        for i in range(0, len(raw), 3):
+            r, g, b = raw[i], raw[i + 1], raw[i + 2]
             self._write_byte((r & 0xF8) | (g >> 5))
             self._write_byte(((g & 0x1C) << 3) | (b >> 3))
         G.output(self._cs, G.HIGH)

@@ -31,6 +31,12 @@ MODULES = [
 processes: list[asyncio.subprocess.Process] = []
 
 
+_LEVEL_COLORS = {
+    "ERROR":    "\033[91m",
+    "CRITICAL": "\033[91m",
+    "WARNING":  "\033[93m",
+}
+
 async def stream_output(
     stream: asyncio.StreamReader,
     prefix: str,
@@ -40,12 +46,18 @@ async def stream_output(
     label_w = max(len(m) for m in MODULES) + 2
     label = f"{color}{_BOLD}{prefix:<{label_w}}{_RESET}"
     sep   = f"{_DIM}│{_RESET} "
-    err   = f"{_DIM}ERR{_RESET} " if is_stderr else ""
     while True:
         line = await stream.readline()
         if not line:
             break
-        print(f"{label}{sep}{err}{line.decode(errors='replace').rstrip()}", flush=True)
+        text = line.decode(errors="replace").rstrip()
+        # Colour the line only for genuine errors/warnings; no ERR prefix on INFO
+        level_color = ""
+        for lvl, lvl_clr in _LEVEL_COLORS.items():
+            if f" {lvl}: " in text or f" {lvl} " in text:
+                level_color = lvl_clr
+                break
+        print(f"{label}{sep}{level_color}{text}{_RESET if level_color else ''}", flush=True)
 
 
 async def run_module(name: str, color: str) -> None:
