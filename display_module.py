@@ -173,8 +173,22 @@ class ILI9341Parallel:
         # Exit sleep, then display on
         self._cmd(self._CMD_SLPOUT); time.sleep(0.12)
         self._cmd(self._CMD_DISPON)
+        self._fill(0x00, 0x1F)   # solid blue → confirms pixel writes work
 
     # -- public API --
+
+    def _fill(self, hi: int, lo: int) -> None:
+        """Fill entire screen with a single RGB565 colour (for diagnostics)."""
+        self._cmd(self._CMD_CASET); self._data_bytes(0, 0, 0, 239)
+        self._cmd(self._CMD_RASET); self._data_bytes(0, 0, 1, 63)
+        self._cmd(self._CMD_RAMWR)
+        G = self._G
+        G.output(self._cs, G.LOW)
+        G.output(self._rs, G.HIGH)
+        for _ in range(240 * 320):
+            self._write_byte(hi)
+            self._write_byte(lo)
+        G.output(self._cs, G.HIGH)
 
     def display(self, image) -> None:
         """Blit a 240×320 PIL RGB image to the display."""
