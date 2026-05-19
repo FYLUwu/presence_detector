@@ -31,7 +31,14 @@ from dataclasses import dataclass, field
 import aiomqtt
 
 from config import AppConfig, load_config
-from utils import get_ip_address, get_uptime, setup_logging
+from utils import (
+    STREAM_PATH,
+    get_ip_address,
+    get_uptime,
+    read_stream_file,
+    setup_logging,
+    targets_in_zone,
+)
 
 logger = setup_logging("display")
 
@@ -76,6 +83,18 @@ class DisplayState:
     co2_alert: bool = False
     targets: list = field(default_factory=lambda: [{}, {}, {}])
     zone_occupied: dict = field(default_factory=dict)
+
+
+def _set_targets(state: DisplayState, targets: list[dict]) -> None:
+    state.targets = [t for t in targets if t.get("x") is not None and t.get("y") is not None]
+    state.count = len(state.targets)
+    state.presence = state.count > 0
+
+
+def _sync_from_stream(state: DisplayState) -> None:
+    data = read_stream_file(STREAM_PATH)
+    if data is not None:
+        _set_targets(state, data.get("targets", []))
 
 
 # ---------------------------------------------------------------------------
@@ -467,9 +486,10 @@ async def _mqtt_listener(cfg: AppConfig, state: DisplayState) -> None:
     topics = [
         "sensor/HLK-LD2450/count",
         "sensor/HLK-LD2450/presence",
-        "sensor/HLK-LD2450/target_0",
+        "sensor/HLK-LD2450/targets",
         "sensor/HLK-LD2450/target_1",
         "sensor/HLK-LD2450/target_2",
+        "sensor/HLK-LD2450/target_3",
         "sensor/HLK-LD2450/zone/+",
         "sensor/CO2/alert",
     ]
@@ -488,13 +508,24 @@ async def _mqtt_listener(cfg: AppConfig, state: DisplayState) -> None:
                         state.presence = payload == "true"
                     elif topic == "sensor/CO2/alert":
                         state.co2_alert = payload == "true"
-                    elif topic.startswith("sensor/HLK-LD2450/target_"):
-                        idx = int(topic[-1])
+                    elif topic == "sensor/HLK-LD2450/targets":
                         try:
                             data = json.loads(payload)
+                            _set_targets(state, data if isinstance(data, list) else [])
+                        except json.JSONDecodeError:
+                            _set_targets(state, [])
+                    elif topic.startswith("sensor/HLK-LD2450/target_"):
+                        try:
+                            idx = int(topic.rsplit("_", 1)[-1]) - 1
+                            data = json.loads(payload)
+                            while len(state.targets) <= idx:
+                                state.targets.append({})
                             state.targets[idx] = data if data else {}
+                            active = [t for t in state.targets if t.get("x") is not None and t.get("y") is not None]
+                            state.count = len(active)
+                            state.presence = state.count > 0
                         except (json.JSONDecodeError, ValueError):
-                            state.targets[idx] = {}
+                            pass
                     elif topic.startswith("sensor/HLK-LD2450/zone/"):
                         state.zone_occupied[topic.split("/")[-1]] = payload == "true"
         except aiomqtt.MqttError as e:
@@ -512,12 +543,21 @@ async def _mqtt_listener(cfg: AppConfig, state: DisplayState) -> None:
 async def _render_loop(cfg: AppConfig, state: DisplayState, device) -> None:
     while True:
         try:
+            _sync_from_stream(state)
+            try:
+                live_cfg = load_config()
+            except Exception:
+                live_cfg = cfg
+            state.zone_occupied = {
+                zone.name: targets_in_zone(state.targets, zone)
+                for zone in live_cfg.zones
+            }
             if device is not None:
-                image = _render_frame(state, cfg)
+                image = _render_frame(state, live_cfg)
                 # GPIO writes are blocking but fast (~100-250 ms); run in thread.
                 await asyncio.to_thread(device.display, image)
             else:
-                _demo_render(state, cfg)
+                _demo_render(state, live_cfg)
         except Exception as e:
             logger.error(f"Render error: {e}")
         await asyncio.sleep(RENDER_INTERVAL)

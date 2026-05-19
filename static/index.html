@@ -524,10 +524,17 @@ function connectWs() {
     targets = d.targets || [];
     updateDisplayTargets(targets);
 
-    // Merge occupancy from server, preserve local zone bounds
+    // Merge zones from server so saved edits from any client are reflected live.
     _zonesFromServer = d.zones || [];
     if (zones.length === 0 && _zonesFromServer.length > 0) {
       zones = _zonesFromServer.map(z => ({...z}));
+    } else if (!interaction) {
+      const selectedName = zones[selectedZone]?.name;
+      zones = _zonesFromServer.map(sz => {
+        const local = zones.find(z => z.name === sz.name);
+        return { ...(local || {}), ...sz };
+      });
+      selectedZone = zones.findIndex(z => z.name === selectedName);
     } else {
       // Update only occupancy
       _zonesFromServer.forEach(sz => {

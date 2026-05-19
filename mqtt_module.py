@@ -152,7 +152,12 @@ async def _publish_loop(cfg: AppConfig, demo: bool) -> None:
                             else:
                                 _last_known = data
 
-                        await _publish_data(client, data, cfg)
+                        try:
+                            live_cfg = load_config()
+                        except Exception:
+                            live_cfg = cfg
+
+                        await _publish_data(client, data, live_cfg)
                         await asyncio.sleep(PUBLISH_INTERVAL)
                 finally:
                     listener_task.cancel()
