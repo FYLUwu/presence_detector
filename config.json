@@ -29,10 +29,10 @@
     "height": 320,
     "font_size": 16,
     "rst_pin": 25,
-    "cs_pin": 8,
+    "cs_pin": 26,
     "rs_pin": 24,
     "wr_pin": 23,
-    "data_pins": [0, 1, 2, 3, 4, 17, 27, 22]
+    "data_pins": [5, 6, 12, 13, 16, 19, 20, 21]
   },
   "zones": [
     {

@@ -12,9 +12,9 @@ SPI-only. So we talk to the GPIO hardware directly by memory-mapping
 full frame is ~153 kB = 1.2 M GPIO toggles).
 
 Pin mapping (BCM, physical):
-  RST=25(22), CS=8(24), RS=24(18), WR=23(16), RD→3.3V
-  D0=GPIO0(27), D1=GPIO1(28), D2=GPIO2(3),  D3=GPIO3(5)
-  D4=GPIO4(7), D5=GPIO17(11), D6=GPIO27(13), D7=GPIO22(15)
+  RST=25(22), CS=26(37), RS=24(18), WR=23(16), RD→3.3V
+  D0=GPIO5(29), D1=GPIO6(31), D2=GPIO12(32), D3=GPIO13(33)
+  D4=GPIO16(36), D5=GPIO19(35), D6=GPIO20(38), D7=GPIO21(40)
 
 Falls back to stdout demo mode if /dev/gpiomem isn't available.
 """

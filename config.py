@@ -83,10 +83,10 @@ class DisplayConfig:
     type: str = "ili9341"
     # ILI9341 8-bit parallel pins (BCM)
     rst_pin: int = 25
-    cs_pin: int = 8
+    cs_pin: int = 26
     rs_pin: int = 24
     wr_pin: int = 23
-    data_pins: list = field(default_factory=lambda: [0, 1, 2, 3, 4, 17, 27, 22])
+    data_pins: list = field(default_factory=lambda: [5, 6, 12, 13, 16, 19, 20, 21])
     # SSD1306 I2C (kept for backward compat)
     i2c_address: str = "0x3C"
 
